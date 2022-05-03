@@ -20,7 +20,6 @@ class CompetitionsController < ApplicationController
     :show_podiums,
     :show_all_results,
     :show_results_by_person,
-    :show_events,
     :show_scrambles,
   ]
   before_action -> { redirect_to_root_unless_user(:can_admin_competitions?) }, only: [
@@ -195,7 +194,7 @@ class CompetitionsController < ApplicationController
     else
       # Show id errors under name, since we don't actually show an
       # id field to the user, so they wouldn't see any id errors.
-      @competition.errors[:name].concat(@competition.errors[:id])
+      @competition.errors[:id].each { |error| @competition.errors.add(:name, message: error) }
       @nearby_competitions = get_nearby_competitions(@competition)
       render :new
     end
@@ -267,10 +266,6 @@ class CompetitionsController < ApplicationController
 
     flash[:success] = t('competitions.messages.results_posted')
     redirect_to admin_edit_competition_path(comp)
-  end
-
-  def show_events
-    @competition = competition_from_params(includes: [:events, competition_events: { rounds: [:format, :competition_event] }])
   end
 
   def edit_events
@@ -373,6 +368,7 @@ class CompetitionsController < ApplicationController
   end
 
   def currency_convert
+    update_rates_if_needed
     converted = Money.new(params[:value], params[:from_currency]).exchange_to(params[:to_currency])
     render json: {
       formatted: converted.format,
@@ -560,6 +556,12 @@ class CompetitionsController < ApplicationController
 
   private def confirming?
     params[:commit] == "Confirm"
+  end
+
+  private def update_rates_if_needed
+    if !Money.default_bank.rates_updated_at || Money.default_bank.rates_updated_at < 1.day.ago
+      Money.default_bank.update_rates
+    end
   end
 
   private def competition_params
